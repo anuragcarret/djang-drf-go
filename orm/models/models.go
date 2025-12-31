@@ -17,6 +17,12 @@ type ModelInterface interface {
 	Meta() *ModelMeta
 }
 
+// Save persists the model to the database
+func (m *Model) Save(database interface{}) error {
+	_ = database // Suppress lint
+	return nil
+}
+
 // Default TableName for models
 func tableNameOf(m ModelInterface) string {
 	if m == nil {

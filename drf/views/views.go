@@ -21,6 +21,21 @@ type APIViewMethods interface {
 // BaseAPIView provides the default dispatch logic
 type BaseAPIView struct{}
 
+func (v *BaseAPIView) Response(w http.ResponseWriter) *ResponseWrapper {
+	return &ResponseWrapper{w: w}
+}
+
+type ResponseWrapper struct {
+	w http.ResponseWriter
+}
+
+func (rw *ResponseWrapper) OK(data interface{})      { OK(data).Render(rw.w) }
+func (rw *ResponseWrapper) Created(data interface{}) { Created(data).Render(rw.w) }
+func (rw *ResponseWrapper) BadRequest(msg string) {
+	BadRequest(map[string]string{"error": msg}).Render(rw.w)
+}
+func (rw *ResponseWrapper) NotFound(msg string) { NotFound(msg).Render(rw.w) }
+
 func (v *BaseAPIView) Get(c *Context) Response    { return MethodNotAllowed() }
 func (v *BaseAPIView) Post(c *Context) Response   { return MethodNotAllowed() }
 func (v *BaseAPIView) Put(c *Context) Response    { return MethodNotAllowed() }

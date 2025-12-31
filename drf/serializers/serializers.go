@@ -31,6 +31,10 @@ func NewSerializer(instance interface{}) *BaseSerializer {
 	}
 }
 
+func (s *BaseSerializer) SetData(data map[string]interface{}) {
+	s.validatedData = data
+}
+
 func (s *BaseSerializer) Data() map[string]interface{} {
 	val := reflect.ValueOf(s.instance)
 	if val.Kind() == reflect.Ptr {
