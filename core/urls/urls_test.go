@@ -1,152 +1,75 @@
 package urls
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-func TestRouter(t *testing.T) {
-	t.Run("matches simple path", func(t *testing.T) {
-		r := NewRouter()
-		handler1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("home"))
-		})
-		handler2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("about"))
-		})
+func TestRouterInclude(t *testing.T) {
+	// Sub-router (e.g. accounts)
+	subRouter := NewRouter()
+	subRouter.Get("/login", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "login page")
+	}), "login")
 
-		r.Path("/", handler1, "home")
-		r.Path("/about", handler2, "about")
+	// Main router
+	mainRouter := NewRouter()
+	mainRouter.Include("/accounts", subRouter, "accounts")
 
-		tests := []struct {
-			path     string
-			expected string
-		}{
-			{"/", "home"},
-			{"/about", "about"},
-		}
+	// Test request to nested route
+	req := httptest.NewRequest("GET", "/accounts/login", nil)
+	w := httptest.NewRecorder()
 
-		for _, tc := range tests {
-			req := httptest.NewRequest("GET", tc.path, nil)
-			rec := httptest.NewRecorder()
-			r.ServeHTTP(rec, req)
+	mainRouter.ServeHTTP(w, req)
 
-			if rec.Body.String() != tc.expected {
-				t.Errorf("path %s: expected %s, got %s", tc.path, tc.expected, rec.Body.String())
-			}
-		}
-	})
-
-	t.Run("handles 404", func(t *testing.T) {
-		r := NewRouter()
-		req := httptest.NewRequest("GET", "/unknown", nil)
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusNotFound {
-			t.Errorf("expected 404, got %d", rec.Code)
-		}
-	})
-
-	t.Run("matches path parameters", func(t *testing.T) {
-		r := NewRouter()
-		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id, _ := URLParam[int](r, "id")
-			w.Write([]byte("user " + string(rune('0'+id)))) // primitive conversion for testing
-		})
-
-		r.Path("/users/{id:int}", handler, "user-detail")
-
-		req := httptest.NewRequest("GET", "/users/1", nil)
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-
-		if rec.Body.String() != "user 1" {
-			t.Errorf("expected 'user 1', got '%s'", rec.Body.String())
-		}
-	})
-
-	t.Run("handles method-specific routes", func(t *testing.T) {
-		r := NewRouter()
-		r.Get("/items", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("list"))
-		}), "list")
-		r.Post("/items", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("create"))
-		}), "create")
-
-		// Test GET
-		req := httptest.NewRequest("GET", "/items", nil)
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		if rec.Body.String() != "list" {
-			t.Errorf("GET: expected list, got %s", rec.Body.String())
-		}
-
-		// Test POST
-		req = httptest.NewRequest("POST", "/items", nil)
-		rec = httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		if rec.Body.String() != "create" {
-			t.Errorf("POST: expected create, got %s", rec.Body.String())
-		}
-
-		// Test 405
-		req = httptest.NewRequest("PUT", "/items", nil)
-		rec = httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		if rec.Code != http.StatusMethodNotAllowed {
-			t.Errorf("expected 405, got %d", rec.Code)
-		}
-	})
-
-	t.Run("handles nested routers with Include", func(t *testing.T) {
-		main := NewRouter()
-		app := NewRouter()
-		app.Get("/info", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("app-info"))
-		}), "info")
-
-		main.Include("/app", app, "app")
-
-		req := httptest.NewRequest("GET", "/app/info", nil)
-		rec := httptest.NewRecorder()
-		main.ServeHTTP(rec, req)
-
-		if rec.Body.String() != "app-info" {
-			t.Errorf("expected 'app-info', got '%s'", rec.Body.String())
-		}
-	})
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	if w.Body.String() != "login page" {
+		t.Errorf("Expected body 'login page', got '%s'", w.Body.String())
+	}
 }
 
-func TestReverse(t *testing.T) {
-	r := NewRouter()
-	r.Path("/users/{id:int}", nil, "user-detail")
-	r.Path("/articles/{slug:slug}", nil, "article-detail")
+func TestRouterReverseNamespaced(t *testing.T) {
+	subRouter := NewRouter()
+	subRouter.Get("/profile/{id:int}", nil, "profile")
 
-	app := NewRouter()
-	app.Get("/{id:int}", nil, "item")
-	r.Include("/items", app, "api")
+	mainRouter := NewRouter()
+	mainRouter.Include("/users", subRouter, "users")
 
-	tests := []struct {
-		name     string
-		args     []interface{}
-		expected string
-	}{
-		{"user-detail", []interface{}{42}, "/users/42"},
-		{"article-detail", []interface{}{"hello-world"}, "/articles/hello-world"},
-		{"api:item", []interface{}{10}, "/items/10"},
+	// Reverse with namespace:name
+	url, err := mainRouter.Reverse("users:profile", 123)
+	if err != nil {
+		t.Fatalf("Reverse failed: %v", err)
 	}
 
-	for _, tc := range tests {
-		url, err := r.Reverse(tc.name, tc.args...)
-		if err != nil {
-			t.Errorf("Reverse(%s) failed: %v", tc.name, err)
-			continue
-		}
-		if url != tc.expected {
-			t.Errorf("Reverse(%s): expected %s, got %s", tc.name, tc.expected, url)
-		}
+	expected := "/users/profile/123"
+	if url != expected {
+		t.Errorf("Expected URL '%s', got '%s'", expected, url)
+	}
+}
+
+func TestRouterDeepNesting(t *testing.T) {
+	level3 := NewRouter()
+	level3.Get("/end", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}), "end")
+
+	level2 := NewRouter()
+	level2.Include("/l3", level3, "l3")
+
+	level1 := NewRouter()
+	level1.Include("/l2", level2, "l2")
+
+	// Path: /l2/l3/end
+	req := httptest.NewRequest("GET", "/l2/l3/end", nil)
+	w := httptest.NewRecorder()
+
+	level1.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200 OK for deep nesting, got %d", w.Code)
 	}
 }

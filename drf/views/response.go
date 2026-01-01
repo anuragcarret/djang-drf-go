@@ -3,6 +3,8 @@ package views
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/anuragcarret/djang-drf-go/drf/serializers"
 )
 
 // Response represents an HTTP response
@@ -11,6 +13,7 @@ type Response struct {
 	Data        interface{}
 	Headers     map[string]string
 	ContentType string
+	Depth       int
 }
 
 func (r Response) Render(w http.ResponseWriter) {
@@ -23,7 +26,9 @@ func (r Response) Render(w http.ResponseWriter) {
 	}
 	w.WriteHeader(r.Status)
 	if r.Data != nil {
-		json.NewEncoder(w).Encode(r.Data)
+		// Automatically serialize data to strip write_only fields
+		serialized := serializers.Serialize(r.Data, r.Depth)
+		json.NewEncoder(w).Encode(serialized)
 	}
 }
 
@@ -46,6 +51,10 @@ func BadRequest(data interface{}) Response {
 
 func NotFound(msg string) Response {
 	return Response{Status: http.StatusNotFound, Data: map[string]string{"detail": msg}}
+}
+
+func Forbidden(msg string) Response {
+	return Response{Status: http.StatusForbidden, Data: map[string]string{"detail": msg}}
 }
 
 func MethodNotAllowed() Response {

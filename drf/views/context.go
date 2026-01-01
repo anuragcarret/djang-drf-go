@@ -13,6 +13,7 @@ type Context struct {
 	Params         map[string]interface{}
 	Query          url.Values
 	Data           map[string]interface{}
+	User           interface{}
 }
 
 // ParseRequest parses the request body based on Content-Type

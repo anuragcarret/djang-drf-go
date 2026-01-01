@@ -67,4 +67,21 @@ func TestAPIView(t *testing.T) {
 			t.Errorf("expected 405, got %d", rec.Code)
 		}
 	})
+
+	t.Run("blocks unauthenticated users when IsAuthenticated is set", func(t *testing.T) {
+		view := &TestView{}
+		view.PermissionClasses = []Permission{&IsAuthenticated{}}
+		handler := Handler(view)
+
+		req := httptest.NewRequest("GET", "/", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected 403, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "You do not have permission") {
+			t.Errorf("unexpected error message: %s", rec.Body.String())
+		}
+	})
 }

@@ -45,21 +45,33 @@ type AppConfig struct {
 	// DefaultAutoField specifies the default primary key type
 	// Options: "BigAutoField", "AutoField", "UUIDField"
 	DefaultAutoField string
+
+	// Models maps table names to model instances
+	Models map[string]interface{}
 }
 
 // Registry manages installed applications.
 type Registry struct {
-	apps  map[string]App
-	order []string // Maintains registration order
-	ready bool
-	mu    sync.RWMutex
+	apps          map[string]App
+	models        map[string]interface{} // Global mapping of table_name -> model
+	pendingModels map[string][]pendingModel
+	order         []string // Maintains registration order
+	ready         bool
+	mu            sync.RWMutex
+}
+
+type pendingModel struct {
+	model     interface{}
+	tableName string
 }
 
 // NewRegistry creates a new app registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		apps:  make(map[string]App),
-		order: make([]string, 0),
+		apps:          make(map[string]App),
+		models:        make(map[string]interface{}),
+		pendingModels: make(map[string][]pendingModel),
+		order:         make([]string, 0),
 	}
 }
 
@@ -85,6 +97,18 @@ func (r *Registry) Register(app App) error {
 
 	r.apps[name] = app
 	r.order = append(r.order, name)
+
+	// Process pending models for this app
+	if pending, ok := r.pendingModels[name]; ok {
+		if config.Models == nil {
+			config.Models = make(map[string]interface{})
+		}
+		for _, m := range pending {
+			config.Models[m.tableName] = m.model
+			r.models[m.tableName] = m.model
+		}
+		delete(r.pendingModels, name)
+	}
 	return nil
 }
 
@@ -152,6 +176,56 @@ func (r *Registry) GetAppConfigs() []*AppConfig {
 		configs = append(configs, r.apps[name].AppConfig())
 	}
 	return configs
+}
+
+// RegisterModel adds a model to the app and the global registry.
+func (r *Registry) RegisterModel(appLabel string, model interface{}, tableName string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	app, exists := r.apps[appLabel]
+	if !exists {
+		// Buffer it if app not registered yet (common during init())
+		r.pendingModels[appLabel] = append(r.pendingModels[appLabel], pendingModel{
+			model:     model,
+			tableName: tableName,
+		})
+		return nil
+	}
+
+	config := app.AppConfig()
+	if config.Models == nil {
+		config.Models = make(map[string]interface{})
+	}
+
+	config.Models[tableName] = model
+	r.models[tableName] = model
+	return nil
+}
+
+// GetModel returns a model by its table name.
+func (r *Registry) GetModel(tableName string) (interface{}, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	model, exists := r.models[tableName]
+	if !exists {
+		return nil, errors.New("model not found: " + tableName)
+	}
+	return model, nil
+}
+
+// GetAllModels returns all registered models across all apps.
+func (r *Registry) GetAllModels() map[string]interface{} {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Return a copy to avoid mutation
+	models := make(map[string]interface{})
+	for k, v := range r.models {
+		models[k] = v
+	}
+	return models
 }
 
 // AppCount returns the number of registered apps.

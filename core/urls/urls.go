@@ -32,7 +32,6 @@ type paramInfo struct {
 // Router manages URL patterns
 type Router struct {
 	patterns  []*URLPattern
-	prefix    string
 	namespace string
 }
 
@@ -40,6 +39,14 @@ type Router struct {
 func NewRouter() *Router {
 	return &Router{
 		patterns: make([]*URLPattern, 0),
+	}
+}
+
+// Register adds a list of patterns to the router
+func (r *Router) Register(patterns ...*URLPattern) {
+	for _, p := range patterns {
+		p.compile()
+		r.patterns = append(r.patterns, p)
 	}
 }
 
@@ -78,7 +85,6 @@ func (r *Router) Include(prefix string, router *Router, namespace string) *Route
 		Includes: router,
 		Name:     namespace,
 	}
-	router.prefix = prefix
 	router.namespace = namespace
 	r.patterns = append(r.patterns, p)
 	return r
@@ -87,14 +93,6 @@ func (r *Router) Include(prefix string, router *Router, namespace string) *Route
 // ServeHTTP implements http.Handler
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
-	if r.prefix != "" {
-		path = strings.TrimPrefix(path, r.prefix)
-		if path == req.URL.Path {
-			// Prefix mismatch
-			http.NotFound(w, req)
-			return
-		}
-	}
 
 	allowedMethods := make(map[string]bool)
 	pathMatched := false
@@ -102,7 +100,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	for _, p := range r.patterns {
 		if p.Includes != nil {
 			if strings.HasPrefix(path, p.Pattern) {
-				p.Includes.ServeHTTP(w, req)
+				// Strip prefix and delegate
+				http.StripPrefix(p.Pattern, p.Includes).ServeHTTP(w, req)
 				return
 			}
 			continue
@@ -157,6 +156,23 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	http.NotFound(w, req)
+}
+
+// --- Pattern Helpers ---
+
+// MakePath creates a standalone URLPattern (useful for defining lists)
+func MakePath(pattern string, handler http.Handler, name string) *URLPattern {
+	return &URLPattern{Pattern: pattern, Handler: handler, Name: name}
+}
+
+// MakeGet creates a GET URLPattern
+func MakeGet(pattern string, handler http.Handler, name string) *URLPattern {
+	return &URLPattern{Pattern: pattern, Handler: handler, Name: name, Methods: []string{"GET"}}
+}
+
+// MakePost creates a POST URLPattern
+func MakePost(pattern string, handler http.Handler, name string) *URLPattern {
+	return &URLPattern{Pattern: pattern, Handler: handler, Name: name, Methods: []string{"POST"}}
 }
 
 // Reverse generates a URL from a name and parameters
