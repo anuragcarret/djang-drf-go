@@ -53,6 +53,7 @@ type AppConfig struct {
 // Registry manages installed applications.
 type Registry struct {
 	apps          map[string]App
+	configs       map[string]*AppConfig  // Cache configs to persist state like Models map
 	models        map[string]interface{} // Global mapping of table_name -> model
 	pendingModels map[string][]pendingModel
 	order         []string // Maintains registration order
@@ -69,6 +70,7 @@ type pendingModel struct {
 func NewRegistry() *Registry {
 	return &Registry{
 		apps:          make(map[string]App),
+		configs:       make(map[string]*AppConfig),
 		models:        make(map[string]interface{}),
 		pendingModels: make(map[string][]pendingModel),
 		order:         make([]string, 0),
@@ -96,6 +98,7 @@ func (r *Registry) Register(app App) error {
 	}
 
 	r.apps[name] = app
+	r.configs[name] = config // Store the config instance
 	r.order = append(r.order, name)
 
 	// Process pending models for this app
@@ -183,8 +186,7 @@ func (r *Registry) RegisterModel(appLabel string, model interface{}, tableName s
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	app, exists := r.apps[appLabel]
-	if !exists {
+	if _, exists := r.apps[appLabel]; !exists {
 		// Buffer it if app not registered yet (common during init())
 		r.pendingModels[appLabel] = append(r.pendingModels[appLabel], pendingModel{
 			model:     model,
@@ -193,7 +195,12 @@ func (r *Registry) RegisterModel(appLabel string, model interface{}, tableName s
 		return nil
 	}
 
-	config := app.AppConfig()
+	config, ok := r.configs[appLabel]
+	if !ok {
+		// Should not happen if apps and configs are synced
+		return ErrAppNotFound
+	}
+
 	if config.Models == nil {
 		config.Models = make(map[string]interface{})
 	}
@@ -233,6 +240,33 @@ func (r *Registry) AppCount() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.apps)
+}
+
+// GetContainingApp returns the AppConfig for the app that contains the given model.
+func (r *Registry) GetContainingApp(model interface{}) *AppConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// 1. Get table name of the model
+	type TableNamer interface {
+		TableName() string
+	}
+
+	tn, ok := model.(TableNamer)
+	if !ok {
+		return nil
+	}
+	tableName := tn.TableName()
+
+	// 2. Iterate configs to find the owner
+	for _, config := range r.configs {
+		if config.Models != nil {
+			if _, ok := config.Models[tableName]; ok {
+				return config
+			}
+		}
+	}
+	return nil
 }
 
 // Global registry instance
