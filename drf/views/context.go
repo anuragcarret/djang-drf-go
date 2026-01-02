@@ -31,6 +31,14 @@ func (c *Context) ParseRequest() error {
 	return nil
 }
 
+// URLParam retrieves a URL path parameter (e.g., /items/:id)
+// For now, falls back to query params until router integration is complete
+func (c *Context) URLParam(key string) string {
+	// TODO: Integrate with router to extract path params
+	// For now, use query params as fallback
+	return c.Query.Get(key)
+}
+
 // Bind unmarshals the parsed data into v
 func (c *Context) Bind(v interface{}) error {
 	// Since data is already in a map, we can marshal it back to json

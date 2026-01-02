@@ -742,3 +742,56 @@ func collectFields(v reflect.Value) ([]string, []interface{}) {
 	}
 	return fields, values
 }
+
+// Update updates records in the database
+func (q *QuerySet[T]) Update(obj T) error {
+	val := reflect.ValueOf(obj)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	var tableName string
+	if m, ok := interface{}(obj).(ModelInterface); ok {
+		tableName = m.TableName()
+	}
+
+	// Get ID for WHERE clause
+	idField := val.FieldByName("ID")
+	if !idField.IsValid() {
+		return fmt.Errorf("model must have an ID field")
+	}
+	id := idField.Uint()
+	if id == 0 {
+		return fmt.Errorf("cannot update object with ID 0")
+	}
+
+	// Collect fields and values for SET clause
+	fields, values := collectFields(val)
+
+	// Build SET clause
+	setClauses := make([]string, len(fields))
+	for i, field := range fields {
+		setClauses[i] = fmt.Sprintf("%s = $%d", field, i+1)
+	}
+
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d",
+		tableName, strings.Join(setClauses, ", "), len(values)+1)
+
+	values = append(values, id)
+
+	_, err := q.db.Exec(query, values...)
+	return err
+}
+
+// Delete deletes a record by ID
+func (q *QuerySet[T]) Delete(id uint64) error {
+	tableName := q.getTableName()
+	query := fmt.Sprintf("DELETE FROM %s WHERE id = $1", tableName)
+	_, err := q.db.Exec(query, id)
+	return err
+}
+
+// GetByID retrieves a single object by ID (convenience method)
+func (q *QuerySet[T]) GetByID(id uint64) (T, error) {
+	return q.Get(Q{"id": id})
+}
