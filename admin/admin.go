@@ -19,6 +19,15 @@ import (
 	"github.com/anuragcarret/djang-drf-go/orm/queryset"
 )
 
+// AdminAction defines a bulk operation on multiple objects
+type AdminAction struct {
+	Name        string
+	Label       string
+	Description string
+	// Handler takes a queryset and a list of IDs to operate on
+	Handler interface{} // Will be cast to func(qs *queryset.QuerySet[T], ids []uint64) (string, error)
+}
+
 // AdminHandler defines the interface for a model's admin handler
 type AdminHandler interface {
 	RegisterRoutes(r *urls.Router, prefix string, db *db.DB)
@@ -30,6 +39,7 @@ type ModelAdmin struct {
 	ListDisplay  []string
 	SearchFields []string
 	ListFilter   []string
+	Actions      []AdminAction
 }
 
 // AdminSite represents the main admin interface
@@ -172,6 +182,9 @@ func (g *GenericAdmin[T]) RegisterRoutes(r *urls.Router, prefix string, database
 	r.Get(prefix+"/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.ChangeListView(w, r, database)
 	}), "admin_template_list")
+	r.Post(prefix+"/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		g.ChangeListView(w, r, database)
+	}), "admin_template_list_post")
 
 	// Add View (HTML)
 	r.Get(prefix+"/add/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -307,7 +320,90 @@ func (s *AdminSite) getTemplateData() map[string]interface{} {
 		"Apps": appsList,
 	}
 }
-func (g *GenericAdmin[T]) ChangeListView(w http.ResponseWriter, r *http.Request, database *db.DB) {
+func (g *GenericAdmin[T]) getActions() []AdminAction {
+	actions := []AdminAction{
+		{
+			Name:        "delete_selected",
+			Label:       "Delete selected " + reflect.TypeOf((*T)(nil)).Elem().Elem().Name() + "s",
+			Description: "Delete the selected objects",
+			Handler: func(qs *queryset.QuerySet[T], ids []uint64) (string, error) {
+				for _, id := range ids {
+					if err := qs.Delete(id); err != nil {
+						return "", err
+					}
+				}
+				return fmt.Sprintf("Successfully deleted %d items.", len(ids)), nil
+			},
+		},
+	}
+	if g.config != nil {
+		actions = append(actions, g.config.Actions...)
+	}
+	return actions
+}
+
+func (g *GenericAdmin[T]) getActionByName(name string) *AdminAction {
+	for _, a := range g.getActions() {
+		if a.Name == name {
+			return &a
+		}
+	}
+	return nil
+}
+
+func (g *GenericAdmin[T]) ChangeListView(w http.ResponseWriter, req *http.Request, database *db.DB) {
+	if req.Method == "POST" {
+		actionName := req.FormValue("action")
+		selectedIDs := req.Form["selected"]
+
+		if actionName != "" && len(selectedIDs) > 0 {
+			action := g.getActionByName(actionName)
+			if action != nil {
+				// Convert string IDs to uint64
+				ids := make([]uint64, 0, len(selectedIDs))
+				for _, sid := range selectedIDs {
+					var id uint64
+					fmt.Sscanf(sid, "%d", &id)
+					if id > 0 {
+						ids = append(ids, id)
+					}
+				}
+
+				if len(ids) > 0 {
+					qs := queryset.NewQuerySet[T](database)
+					// We need to cast the handler
+					if handler, ok := action.Handler.(func(qs *queryset.QuerySet[T], ids []uint64) (string, error)); ok {
+						msg, err := handler(qs, ids)
+						if err != nil {
+							// For now just log and set a message in context if we had one
+							log.Printf("Action error: %v", err)
+						} else {
+							log.Printf("Action success: %s", msg)
+						}
+					}
+				}
+			}
+		}
+
+		// Redirect back to GET list view.
+		// We must include the /admin prefix since the main router strips it.
+		var zero T
+		typ := reflect.TypeOf(zero)
+		if typ.Kind() == reflect.Ptr {
+			typ = typ.Elem()
+		}
+		app := apps.Apps.GetContainingApp(zero)
+		appName := "Unknown"
+		if app != nil {
+			appName = app.Label
+		}
+		modelName := typ.Name()
+
+		redirectURL := fmt.Sprintf("/admin/%s/%s/", appName, modelName)
+		http.Redirect(w, req, redirectURL, http.StatusSeeOther)
+		return
+	}
+
 	var zero T
 	typ := reflect.TypeOf(zero)
 	if typ.Kind() == reflect.Ptr {
@@ -383,6 +479,7 @@ func (g *GenericAdmin[T]) ChangeListView(w http.ResponseWriter, r *http.Request,
 		"ModelName": modelName,
 		"Columns":   columns,
 		"Rows":      rows,
+		"Actions":   g.getActions(),
 		"Apps":      DefaultSite.getTemplateData()["Apps"],
 	}
 

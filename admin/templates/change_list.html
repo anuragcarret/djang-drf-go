@@ -15,44 +15,66 @@
     <a href="/admin/{{.App}}/{{.ModelName}}/add/" class="btn btn-primary">+ Add {{.ModelName}}</a>
 </div>
 
-<div class="card" style="overflow-x: auto;">
-    <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
-        <thead>
-            <tr style="background-color: #f3f4f6; text-align: left; border-bottom: 2px solid var(--border-color);">
-                <th style="padding: 0.75rem 1rem;"><input type="checkbox" id="action-toggle"></th>
-                {{range .Columns}}
-                <th
-                    style="padding: 0.75rem 1rem; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.025em;">
-                    {{.}}
-                </th>
+<div class="card" style="margin-bottom: 2rem;">
+    <form method="POST" id="changelist-form">
+        <div class="actions"
+            style="padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem; background-color: #f9fafb;">
+            <label style="font-size: 0.875rem; color: #374151; font-weight: 500;">Action:</label>
+            <select name="action"
+                style="padding: 0.375rem 0.75rem; border: 1px solid var(--border-color); border-radius: 0.375rem; font-size: 0.875rem; min-width: 200px;">
+                <option value="">---------</option>
+                {{range .Actions}}
+                <option value="{{.Name}}">{{.Label}}</option>
                 {{end}}
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Rows}}
-            {{$rowID := .ID}}
-            <tr style="border-bottom: 1px solid var(--border-color); transition: background-color 0.2s;">
-                <td style="padding: 0.75rem 1rem;"><input type="checkbox" name="selected" value="{{$rowID}}"></td>
-                {{range $i, $val := .Values}}
-                <td style="padding: 0.75rem 1rem;">
-                    {{if eq $i 0}}
-                    <a href="/admin/{{$.App}}/{{$.ModelName}}/{{$rowID}}/change/"
-                        style="color: var(--primary-color); font-weight: 500; text-decoration: none;">{{$val}}</a>
+            </select>
+            <button type="submit" class="btn btn-secondary" style="padding: 0.375rem 1rem;">Go</button>
+            <span id="selection-count" style="font-size: 0.875rem; color: #6b7280; margin-left: auto;">0 of {{len
+                .Rows}} selected</span>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                <thead>
+                    <tr
+                        style="background-color: #f3f4f6; text-align: left; border-bottom: 2px solid var(--border-color);">
+                        <th style="padding: 0.75rem 1rem; width: 40px;"><input type="checkbox" id="action-toggle"></th>
+                        {{range .Columns}}
+                        <th
+                            style="padding: 0.75rem 1rem; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.025em;">
+                            {{.}}
+                        </th>
+                        {{end}}
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Rows}}
+                    {{$rowID := .ID}}
+                    <tr style="border-bottom: 1px solid var(--border-color); transition: background-color 0.2s;">
+                        <td style="padding: 0.75rem 1rem;"><input type="checkbox" name="selected" value="{{$rowID}}"
+                                class="action-select"></td>
+                        {{range $i, $val := .Values}}
+                        <td style="padding: 0.75rem 1rem;">
+                            {{if eq $i 0}}
+                            <a href="/admin/{{$.App}}/{{$.ModelName}}/{{$rowID}}/change/"
+                                style="color: var(--primary-color); font-weight: 500; text-decoration: none;">{{$val}}</a>
+                            {{else}}
+                            {{$val}}
+                            {{end}}
+                        </td>
+                        {{end}}
+                    </tr>
                     {{else}}
-                    {{$val}}
+                    <tr>
+                        <td colspan="{{add (len .Columns) 1}}"
+                            style="padding: 2rem; text-align: center; color: #6b7280;">
+                            No {{.ModelName}} records found.
+                        </td>
+                    </tr>
                     {{end}}
-                </td>
-                {{end}}
-            </tr>
-            {{else}}
-            <tr>
-                <td colspan="{{add (len .Columns) 1}}" style="padding: 2rem; text-align: center; color: #6b7280;">
-                    No {{.ModelName}} records found.
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+                </tbody>
+            </table>
+        </div>
+    </form>
 </div>
 
 <div style="margin-top: 1rem; font-size: 0.875rem; color: #6b7280;">
@@ -60,11 +82,25 @@
 </div>
 
 <script>
-    document.getElementById('action-toggle').onclick = function () {
-        var checkboxes = document.querySelectorAll('input[name="selected"]');
-        for (var checkbox of checkboxes) {
+    const actionToggle = document.getElementById('action-toggle');
+    const checkboxes = document.querySelectorAll('.action-select');
+    const countDisplay = document.getElementById('selection-count');
+    const totalCount = {{ len .Rows }};
+
+    function updateCount() {
+        const checkedCount = document.querySelectorAll('.action-select:checked').length;
+        countDisplay.textContent = `${checkedCount} of ${totalCount} selected`;
+    }
+
+    actionToggle.onclick = function () {
+        for (const checkbox of checkboxes) {
             checkbox.checked = this.checked;
         }
+        updateCount();
+    }
+
+    for (const checkbox of checkboxes) {
+        checkbox.onchange = updateCount;
     }
 </script>
 {{end}}
