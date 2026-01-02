@@ -14,6 +14,10 @@ type Model struct {
 	UpdatedAt time.Time `drf:"updated_at;auto_now"`
 }
 
+func (m *Model) GetID() uint64 {
+	return m.ID
+}
+
 // ModelInterface defines required methods for any model
 type ModelInterface interface {
 	TableName() string

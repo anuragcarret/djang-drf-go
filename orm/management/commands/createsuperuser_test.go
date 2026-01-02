@@ -3,11 +3,12 @@ package management
 import (
 	"testing"
 
+	"github.com/anuragcarret/djang-drf-go/contrib/auth"
 	"github.com/anuragcarret/djang-drf-go/orm/db"
 )
 
 func TestCreateSuperuserCommand_Registration(t *testing.T) {
-	cmd := NewCreateSuperuserCommand(&db.DB{})
+	cmd := NewCreateSuperuserCommand[*auth.User](&db.DB{})
 	if cmd.Name() != "createsuperuser" {
 		t.Errorf("Expected name 'createsuperuser', got %s", cmd.Name())
 	}

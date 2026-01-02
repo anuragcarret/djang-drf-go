@@ -4,7 +4,16 @@ import (
 	"time"
 
 	"github.com/anuragcarret/djang-drf-go/orm/models"
+	"github.com/anuragcarret/djang-drf-go/orm/queryset"
 )
+
+// Authenticatable is the interface for models that can be used for authentication
+type Authenticatable interface {
+	queryset.ModelInterface
+	CheckPassword(password string) bool
+	SetPassword(password string)
+	GetID() uint64
+}
 
 func init() {
 	models.RegisterModel("auth", &User{})
@@ -36,16 +45,16 @@ func (b *BlacklistedToken) TableName() string { return "go_blacklisted_tokens" }
 type User struct {
 	models.Model
 
-	Username    string     `drf:"max_length=150;unique"`
-	Email       string     `drf:"max_length=254;unique"`
-	Password    string     `drf:"max_length=128;write_only"`
-	FirstName   string     `drf:"max_length=30;blank"`
-	LastName    string     `drf:"max_length=150;blank"`
-	IsActive    bool       `drf:"default=true"`
-	IsStaff     bool       `drf:"default=false"`
-	IsSuperuser bool       `drf:"default=false"`
-	LastLogin   *time.Time `drf:"null"`
-	DateJoined  time.Time  `drf:"auto_now_add"`
+	Username    string     `drf:"username;max_length=150;unique"`
+	Email       string     `drf:"email;max_length=254;unique"`
+	Password    string     `drf:"password;max_length=128;write_only"`
+	FirstName   string     `drf:"first_name;max_length=30;blank"`
+	LastName    string     `drf:"last_name;max_length=150;blank"`
+	IsActive    bool       `drf:"is_active;default=true"`
+	IsStaff     bool       `drf:"is_staff;default=false"`
+	IsSuperuser bool       `drf:"is_superuser;default=false"`
+	LastLogin   *time.Time `drf:"last_login;null"`
+	DateJoined  time.Time  `drf:"date_joined;auto_now_add"`
 }
 
 func (u *User) TableName() string { return "go_users" }

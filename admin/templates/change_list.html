@@ -1,0 +1,70 @@
+{{template "base.html" .}}
+
+{{define "title"}}{{.ModelName}} List{{end}}
+
+{{define "breadcrumbs"}}
+<span style="margin: 0 0.5rem;">&rsaquo;</span>
+<a href="/admin/{{.App}}/">{{.App}}</a>
+<span style="margin: 0 0.5rem;">&rsaquo;</span>
+<span>{{.ModelName}}</span>
+{{end}}
+
+{{define "content"}}
+<div class="title-area" style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>Select {{.ModelName}} to change</h2>
+    <a href="/admin/{{.App}}/{{.ModelName}}/add/" class="btn btn-primary">+ Add {{.ModelName}}</a>
+</div>
+
+<div class="card" style="overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+        <thead>
+            <tr style="background-color: #f3f4f6; text-align: left; border-bottom: 2px solid var(--border-color);">
+                <th style="padding: 0.75rem 1rem;"><input type="checkbox" id="action-toggle"></th>
+                {{range .Columns}}
+                <th
+                    style="padding: 0.75rem 1rem; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.025em;">
+                    {{.}}
+                </th>
+                {{end}}
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Rows}}
+            {{$rowID := .ID}}
+            <tr style="border-bottom: 1px solid var(--border-color); transition: background-color 0.2s;">
+                <td style="padding: 0.75rem 1rem;"><input type="checkbox" name="selected" value="{{$rowID}}"></td>
+                {{range $i, $val := .Values}}
+                <td style="padding: 0.75rem 1rem;">
+                    {{if eq $i 0}}
+                    <a href="/admin/{{$.App}}/{{$.ModelName}}/{{$rowID}}/change/"
+                        style="color: var(--primary-color); font-weight: 500; text-decoration: none;">{{$val}}</a>
+                    {{else}}
+                    {{$val}}
+                    {{end}}
+                </td>
+                {{end}}
+            </tr>
+            {{else}}
+            <tr>
+                <td colspan="{{add (len .Columns) 1}}" style="padding: 2rem; text-align: center; color: #6b7280;">
+                    No {{.ModelName}} records found.
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+
+<div style="margin-top: 1rem; font-size: 0.875rem; color: #6b7280;">
+    {{len .Rows}} {{.ModelName}}(s) total.
+</div>
+
+<script>
+    document.getElementById('action-toggle').onclick = function () {
+        var checkboxes = document.querySelectorAll('input[name="selected"]');
+        for (var checkbox of checkboxes) {
+            checkbox.checked = this.checked;
+        }
+    }
+</script>
+{{end}}

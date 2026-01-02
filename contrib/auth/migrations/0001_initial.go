@@ -20,6 +20,7 @@ func init() {
 					"is_active":    "BOOLEAN DEFAULT TRUE",
 					"is_staff":     "BOOLEAN DEFAULT FALSE",
 					"is_superuser": "BOOLEAN DEFAULT FALSE",
+					"last_login":   "TIMESTAMP WITH TIME ZONE",
 					"date_joined":  "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP",
 				},
 			},

@@ -39,22 +39,33 @@ func TestAdminRouter(t *testing.T) {
 
 	router := site.URLs(mockDB) // Inject DB dependency
 
-	// Test Metadata/Index Endpoint
+	// 1. Test SPA Root (/)
+	// Expect index.html content
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected 200 OK for admin index, got %d", w.Code)
-		t.Logf("Response: %s", w.Body.String())
+		t.Errorf("Expected 200 OK for admin root, got %d", w.Code)
+	}
+	if w.Header().Get("Content-Type") != "text/html" {
+		t.Errorf("Expected Content-Type text/html, got %s", w.Header().Get("Content-Type"))
 	}
 
-	// Test Model List Endpoint (URL structure dependent on implementation)
-	// Assuming /app_label/model_name pattern
-	// Since MockModel isn't in a real app, we might need to mock AppConfig lookups or use a simplified structure
+	// 2. Test API Index (/api/)
+	reqApi := httptest.NewRequest("GET", "/api/", nil)
+	wApi := httptest.NewRecorder()
+	router.ServeHTTP(wApi, reqApi)
+
+	if wApi.Code != http.StatusOK {
+		t.Errorf("Expected 200 OK for admin api index, got %d", wApi.Code)
+		t.Logf("Response: %s", wApi.Body.String())
+	}
+
+	// 3. Test Model List Endpoint (/api/... pattern)
 	// Test List Endpoint for MockModel
-	// Path should be /mock_app/MockModel/
-	reqList := httptest.NewRequest("GET", "/mock_app/MockModel", nil)
+	// Path should be /api/mock_app/MockModel
+	reqList := httptest.NewRequest("GET", "/api/mock_app/MockModel", nil)
 	wList := httptest.NewRecorder()
 	router.ServeHTTP(wList, reqList)
 

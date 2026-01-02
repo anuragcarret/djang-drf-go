@@ -2,6 +2,7 @@ package queryset
 
 import (
 	"fmt"
+	"log"
 	"reflect"
 	"strings"
 
@@ -303,28 +304,32 @@ func (q *QuerySet[T]) All() ([]T, error) {
 			elem = elem.Elem()
 		}
 
-		dest := make([]interface{}, len(cols))
-		for i, col := range cols {
-			fieldFound := false
-			for j := 0; j < elem.NumField(); j++ {
-				f := elem.Type().Field(j)
-				tag := f.Tag.Get("drf")
-				parts := strings.Split(tag, ";")
-				colName := parts[0]
-				if colName == col || f.Name == col {
-					dest[i] = elem.Field(j).Addr().Interface()
-					fieldFound = true
-					break
-				}
-			}
-			if !fieldFound {
-				var dummy interface{}
-				dest[i] = &dummy
-			}
+		scanDest := make([]interface{}, len(cols))
+		for i := range cols {
+			scanDest[i] = new(interface{})
 		}
 
-		if err := rows.Scan(dest...); err != nil {
+		if err := rows.Scan(scanDest...); err != nil {
 			return nil, err
+		}
+
+		for i, col := range cols {
+			valPtr := scanDest[i].(*interface{})
+			val := *valPtr
+
+			if val == nil {
+				continue
+			}
+
+			field, found := findFieldByColumn(elem, col)
+			if found && field.CanSet() {
+				fieldVal := reflect.ValueOf(val)
+				if fieldVal.Type().ConvertibleTo(field.Type()) {
+					field.Set(fieldVal.Convert(field.Type()))
+				} else {
+					log.Printf("Warning: cannot convert %v to %v for column %s", fieldVal.Type(), field.Type(), col)
+				}
+			}
 		}
 		results = append(results, item)
 	}
@@ -501,29 +506,15 @@ func (q *QuerySet[T]) Create(obj T) error {
 		val = val.Elem()
 	}
 
-	t := val.Type()
 	var tableName string
 	if m, ok := interface{}(obj).(ModelInterface); ok {
 		tableName = m.TableName()
 	}
 
-	fields := []string{}
-	placeholders := []string{}
-	values := []interface{}{}
-	idx := 1
-
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		tag := f.Tag.Get("drf")
-		if tag == "" || hasOption(tag, "auto_increment") || hasOption(tag, "relation") || hasOption(tag, "m2m") {
-			continue
-		}
-
-		colName := strings.Split(tag, ";")[0]
-		fields = append(fields, colName)
-		placeholders = append(placeholders, fmt.Sprintf("$%d", idx))
-		values = append(values, val.Field(i).Interface())
-		idx++
+	fields, values := collectFields(val)
+	placeholders := make([]string, len(fields))
+	for i := range fields {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
 	}
 
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING id",
@@ -705,4 +696,49 @@ func (q *QuerySet[T]) Get(params ...Q) (T, error) {
 	}
 
 	return results[0], nil
+}
+
+func findFieldByColumn(v reflect.Value, colName string) (reflect.Value, bool) {
+	t := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("drf")
+		parts := strings.Split(tag, ";")
+		if parts[0] == colName {
+			return v.Field(i), true
+		}
+		if f.Anonymous && f.Type.Kind() == reflect.Struct {
+			if subF, ok := findFieldByColumn(v.Field(i), colName); ok {
+				return subF, true
+			}
+		}
+	}
+	return reflect.Value{}, false
+}
+
+func collectFields(v reflect.Value) ([]string, []interface{}) {
+	var fields []string
+	var values []interface{}
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("drf")
+
+		if f.Anonymous && f.Type.Kind() == reflect.Struct {
+			subFields, subValues := collectFields(v.Field(i))
+			fields = append(fields, subFields...)
+			values = append(values, subValues...)
+			continue
+		}
+
+		if tag == "" || hasOption(tag, "auto_increment") || hasOption(tag, "relation") || hasOption(tag, "m2m") {
+			continue
+		}
+
+		colName := strings.Split(tag, ";")[0]
+		fields = append(fields, colName)
+		values = append(values, v.Field(i).Interface())
+	}
+	return fields, values
 }

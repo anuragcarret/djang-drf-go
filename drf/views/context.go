@@ -19,13 +19,26 @@ type Context struct {
 // ParseRequest parses the request body based on Content-Type
 func (c *Context) ParseRequest() error {
 	ct := c.Request.Header.Get("Content-Type")
+	if c.Request.Body == nil {
+		return nil
+	}
+
 	if ct == "application/json" {
-		if c.Request.Body == nil {
-			return nil
-		}
 		decoder := json.NewDecoder(c.Request.Body)
 		return decoder.Decode(&c.Data)
 	}
 	// TODO: Support other content types (form-data, etc.)
 	return nil
+}
+
+// Bind unmarshals the parsed data into v
+func (c *Context) Bind(v interface{}) error {
+	// Since data is already in a map, we can marshal it back to json
+	// and unmarshal into the struct, or use a mapstructure library.
+	// For simplicity in this framework, we'll use json as a bridge.
+	data, err := json.Marshal(c.Data)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, v)
 }

@@ -1,7 +1,7 @@
 package views
 
 import (
-	"encoding/json"
+	"log"
 
 	"github.com/anuragcarret/djang-drf-go/contrib/auth"
 	"github.com/anuragcarret/djang-drf-go/drf/views"
@@ -9,7 +9,7 @@ import (
 	"github.com/anuragcarret/djang-drf-go/orm/queryset"
 )
 
-type TokenObtainPairView struct {
+type TokenObtainPairView[T auth.Authenticatable] struct {
 	views.BaseAPIView
 	DB *db.DB
 }
@@ -19,15 +19,22 @@ type TokenObtainRequest struct {
 	Password string `json:"password"`
 }
 
-func (v *TokenObtainPairView) Post(c *views.Context) views.Response {
+func (v *TokenObtainPairView[T]) Post(c *views.Context) views.Response {
 	var req TokenObtainRequest
-	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+	if err := c.Bind(&req); err != nil {
 		return views.BadRequest("Invalid request body")
 	}
 
-	qs := queryset.NewQuerySet[*auth.User](v.DB)
+	qs := queryset.NewQuerySet[T](v.DB)
 	user, err := qs.Filter(queryset.Q{"username": req.Username}).Get()
+
+	if any(user) == nil {
+		return views.Forbidden("No such user")
+	}
+
 	if err != nil {
+		// Log error but return restricted message for security
+		log.Printf("DB error finding user: %v", err)
 		return views.Forbidden("Invalid credentials")
 	}
 
@@ -35,7 +42,7 @@ func (v *TokenObtainPairView) Post(c *views.Context) views.Response {
 		return views.Forbidden("Invalid credentials")
 	}
 
-	access, refresh, err := auth.GenerateTokenPair(v.DB, user.ID)
+	access, refresh, err := auth.GenerateTokenPair(v.DB, user.GetID())
 	if err != nil {
 		return views.BadRequest("Failed to generate tokens")
 	}
@@ -57,7 +64,7 @@ type TokenRefreshRequest struct {
 
 func (v *TokenRefreshView) Post(c *views.Context) views.Response {
 	var req TokenRefreshRequest
-	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+	if err := c.Bind(&req); err != nil {
 		return views.BadRequest("Invalid request body")
 	}
 

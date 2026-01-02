@@ -60,3 +60,7 @@ func Forbidden(msg string) Response {
 func MethodNotAllowed() Response {
 	return Response{Status: http.StatusMethodNotAllowed, Data: map[string]string{"detail": "Method not allowed"}}
 }
+
+func InternalServerError(msg string) Response {
+	return Response{Status: http.StatusInternalServerError, Data: map[string]string{"error": msg}}
+}
