@@ -236,13 +236,41 @@ func URLParam[T any](r *http.Request, name string) (T, error) {
 // compile prepares the regex for a pattern
 func (p *URLPattern) compile() {
 	pattern := p.Pattern
-	re := regexp.MustCompile(`\{([^}:]+):([^}]+)\}`)
-	matches := re.FindAllStringSubmatch(pattern, -1)
 
-	p.Params = make([]paramInfo, 0, len(matches))
+	// Handle wildcard patterns first (*)
+	if strings.Contains(pattern, "*") {
+		// Pattern like /static/*filepath
+		re := regexp.MustCompile(`\*([a-zA-Z_][a-zA-Z0-9_]*)`)
+		matches := re.FindAllStringSubmatch(pattern, -1)
+
+		p.Params = make([]paramInfo, 0, len(matches))
+		regexStr := "^" + regexp.QuoteMeta(pattern)
+
+		for _, match := range matches {
+			name := match[1]
+			p.Params = append(p.Params, paramInfo{Name: name, Converter: "path"})
+
+			// Replace *name with wildcard regex
+			regexStr = strings.Replace(regexStr, regexp.QuoteMeta("*"+name), "(.+)", 1)
+		}
+
+		p.Regex = regexp.MustCompile(regexStr)
+		return
+	}
+
+	// Handle typed parameters {name:type}
+	reTyped := regexp.MustCompile(`\{([^}:]+):([^}]+)\}`)
+	matchesTyped := reTyped.FindAllStringSubmatch(pattern, -1)
+
+	// Handle simple parameters {name}
+	reSimple := regexp.MustCompile(`\{([^}:]+)\}`)
+	matchesSimple := reSimple.FindAllStringSubmatch(pattern, -1)
+
+	p.Params = make([]paramInfo, 0, len(matchesTyped)+len(matchesSimple))
 	regexStr := "^" + pattern + "$"
 
-	for _, match := range matches {
+	// Process typed params first
+	for _, match := range matchesTyped {
 		name := match[1]
 		convName := match[2]
 		p.Params = append(p.Params, paramInfo{Name: name, Converter: convName})
@@ -254,6 +282,28 @@ func (p *URLPattern) compile() {
 		}
 
 		placeholder := fmt.Sprintf("{%s:%s}", name, convName)
+		regexStr = strings.Replace(regexStr, placeholder, "("+conv.Regex()+")", 1)
+	}
+
+	// Process simple params (default to string)
+	// Only process if not already matched as typed param
+	processed := make(map[string]bool)
+	for _, info := range p.Params {
+		processed[info.Name] = true
+	}
+
+	for _, match := range matchesSimple {
+		name := match[1]
+
+		// Skip if already processed as typed param
+		if processed[name] {
+			continue
+		}
+
+		p.Params = append(p.Params, paramInfo{Name: name, Converter: "str"})
+
+		conv, _ := GetConverter("str")
+		placeholder := fmt.Sprintf("{%s}", name)
 		regexStr = strings.Replace(regexStr, placeholder, "("+conv.Regex()+")", 1)
 	}
 

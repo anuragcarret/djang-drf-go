@@ -10,6 +10,9 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/anuragcarret/djang-drf-go/admin/middleware"
+	"github.com/anuragcarret/djang-drf-go/admin/sessions"
+	"github.com/anuragcarret/djang-drf-go/contrib/auth"
 	"github.com/anuragcarret/djang-drf-go/core/apps"
 	"github.com/anuragcarret/djang-drf-go/core/urls"
 	"github.com/anuragcarret/djang-drf-go/orm/db"
@@ -29,21 +32,37 @@ type ModelAdmin struct {
 	ListFilter   []string
 }
 
-// AdminSite manages registered models and their admin configurations
+// AdminSite represents the main admin interface
 type AdminSite struct {
-	registry  map[reflect.Type]AdminHandler
-	mu        sync.RWMutex
-	Templates map[string]*template.Template
+	registry     map[reflect.Type]AdminHandler
+	mu           sync.RWMutex
+	Templates    map[string]*template.Template
+	sessionStore sessions.SessionStore
+	UserModel    reflect.Type // Type used for authentication
 }
 
 // NewAdminSite creates a new AdminSite instance
 func NewAdminSite() *AdminSite {
 	s := &AdminSite{
-		registry:  make(map[reflect.Type]AdminHandler),
-		Templates: make(map[string]*template.Template),
+		registry:     make(map[reflect.Type]AdminHandler),
+		Templates:    make(map[string]*template.Template),
+		sessionStore: sessions.NewInMemorySessionStore(),
+		UserModel:    reflect.TypeOf(&auth.User{}), // Default user model
 	}
 	s.loadTemplates()
 	return s
+}
+
+// SetUserModel sets the model type used for admin authentication
+func (s *AdminSite) SetUserModel(userModel interface{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	typ := reflect.TypeOf(userModel)
+	if typ.Kind() == reflect.Ptr {
+		s.UserModel = typ
+	} else {
+		s.UserModel = reflect.PtrTo(typ)
+	}
 }
 
 func (s *AdminSite) loadTemplates() {
@@ -59,7 +78,7 @@ func (s *AdminSite) loadTemplates() {
 		return
 	}
 
-	pages := []string{"index.html", "change_list.html"}
+	pages := []string{"index.html", "change_list.html", "change_form.html", "delete_confirmation.html", "login.html"}
 	for _, page := range pages {
 		pageContent, err := fs.ReadFile(fsys, page)
 		if err != nil {
@@ -142,7 +161,9 @@ func (g *GenericAdmin[T]) Config() *ModelAdmin {
 func (g *GenericAdmin[T]) RegisterRoutes(r *urls.Router, prefix string, database *db.DB) {
 	// Register CRUD routes
 	// /prefix/ -> List (GET), Create (POST)
-	// /prefix/{id} -> Retrieve (GET), Update (PUT/PATCH), Delete (DELETE)
+	// /prefix/add/ -> Add form (GET, POST)
+	// /prefix/{id}/change/ -> Edit form (GET, POST)
+	// /prefix/{id}/delete/ -> Delete confirmation (GET, POST)
 
 	// API List View (JSON)
 	r.Get("/api"+prefix+"/", ListModelView[T](g.config, database), "admin_api_list")
@@ -151,18 +172,55 @@ func (g *GenericAdmin[T]) RegisterRoutes(r *urls.Router, prefix string, database
 	r.Get(prefix+"/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.ChangeListView(w, r, database)
 	}), "admin_template_list")
+
+	// Add View (HTML)
+	r.Get(prefix+"/add/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		g.AddView(w, r, database)
+	}), "admin_add")
+	r.Post(prefix+"/add/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		g.AddView(w, r, database)
+	}), "admin_add_post")
+
+	// Change View (HTML)
+	r.Get(prefix+"/{id:int}/change/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		g.ChangeView(w, r, database)
+	}), "admin_change")
+	r.Post(prefix+"/{id:int}/change/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		g.ChangeView(w, r, database)
+	}), "admin_change_post")
+
+	// Delete View (HTML)
+	r.Get(prefix+"/{id:int}/delete/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		g.DeleteView(w, r, database)
+	}), "admin_delete")
+	r.Post(prefix+"/{id:int}/delete/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		g.DeleteView(w, r, database)
+	}), "admin_delete_post")
 }
 
 // URLs returns a router with all admin routes
 func (s *AdminSite) URLs(database *db.DB) *urls.Router {
 	r := urls.NewRouter()
 
-	// 1. API: Root
+	// 1. Direct registrations on the base router
+	loginView := &LoginView{
+		Store:     s.sessionStore,
+		DB:        database,
+		Templates: s.Templates["login.html"],
+		UserModel: s.UserModel,
+	}
+	r.Get("/login/", loginView, "admin_login")
+	r.Post("/login/", loginView, "admin_login_post")
+
+	logoutView := &LogoutView{Store: s.sessionStore}
+	r.Get("/logout/", logoutView, "admin_logout")
+
 	r.Get("/api/", &AdminIndexView{Site: s, DB: database}, "admin_api_index")
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	// Register model admin routes
 	for typ, handler := range s.registry {
 		var model interface{}
 		if typ.Kind() == reflect.Struct {
@@ -184,12 +242,23 @@ func (s *AdminSite) URLs(database *db.DB) *urls.Router {
 		handler.RegisterRoutes(r, routePath, database)
 	}
 
-	// 2. Templates
+	// Dashboard
 	r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.renderTemplate(w, "index.html", s.getTemplateData())
 	}), "admin_root")
 
-	return r
+	// 2. Wrap the base router with middleware and return a proxy router
+	// This ensures ALL routes in 'r' are protected by the same middleware stack
+	handler := middleware.SessionMiddleware(s.sessionStore)(
+		middleware.AdminAuthMiddleware()(r),
+	)
+
+	proxy := urls.NewRouter()
+	// Catch-all patterns to delegate everything to the wrapped handler
+	proxy.Path("/", handler, "admin_proxy_root")
+	proxy.Path("/*remainder", handler, "admin_proxy_all")
+
+	return proxy
 }
 
 func (s *AdminSite) getTemplateData() map[string]interface{} {

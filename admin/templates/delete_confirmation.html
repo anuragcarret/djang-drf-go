@@ -1,0 +1,57 @@
+{{template "base.html" .}}
+
+{{define "title"}}Delete {{.ModelName}}: {{.ObjectRepr}}{{end}}
+
+{{define "breadcrumbs"}}
+<span style="margin: 0 0.5rem;">&rsaquo;</span>
+<a href="/admin/{{.App}}/">{{.App}}</a>
+<span style="margin: 0 0.5rem;">&rsaquo;</span>
+<a href="/admin/{{.App}}/{{.ModelName}}/">{{.ModelName}}</a>
+<span style="margin: 0 0.5rem;">&rsaquo;</span>
+<a href="/admin/{{.App}}/{{.ModelName}}/{{.ObjectID}}/change/">{{.ObjectRepr}}</a>
+<span style="margin: 0 0.5rem;">&rsaquo;</span>
+<span>Delete</span>
+{{end}}
+
+{{define "content"}}
+<div class="card" style="max-width: 600px; margin: 2rem auto; padding: 2rem;">
+    <h2 style="color: #dc2626; margin-top: 0;">Are you sure?</h2>
+    <p style="font-size: 1.125rem;">
+        Are you sure you want to delete the {{.ModelName}}
+        <strong style="color: #374151;">{{.ObjectRepr}}</strong>?
+    </p>
+
+    {{if .RelatedObjects}}
+    <div style="background: #fef2f2; border: 1px solid #fecaca; 
+                border-radius: 0.5rem; padding: 1rem; margin: 1.5rem 0;">
+        <h3 style="color: #991b1b; margin-top: 0; font-size: 1rem;">⚠️ Warning</h3>
+        <p style="margin-bottom: 0.5rem;">Deleting this {{.ModelName}} will also delete:</p>
+        <ul style="margin: 0.5rem 0 0 1.5rem;">
+            {{range .RelatedObjects}}
+            <li style="margin: 0.25rem 0;"><strong>{{.Count}}</strong> {{.Model}} object(s)</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    <form method="POST" style="margin-top: 2rem;">
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <button type="submit" class="btn" style="background: #dc2626; color: white; 
+                           padding: 0.75rem 1.5rem; border: none; 
+                           border-radius: 0.375rem; cursor: pointer; 
+                           font-weight: 600; font-size: 1rem;">
+                Yes, I'm sure
+            </button>
+            <a href="../change/" class="btn btn-outline" style="padding: 0.75rem 1.5rem; border: 1px solid #d1d5db; 
+                      border-radius: 0.375rem; text-decoration: none; 
+                      color: #374151; font-weight: 600; display: inline-block;">
+                No, take me back
+            </a>
+        </div>
+    </form>
+
+    <p style="margin-top: 2rem; color: #6b7280; font-size: 0.875rem;">
+        Note: This action cannot be undone.
+    </p>
+</div>
+{{end}}

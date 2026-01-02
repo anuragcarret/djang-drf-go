@@ -1,0 +1,138 @@
+{{template "base.html" .}}
+
+{{define "title"}}{{if .ObjectID}}Change{{else}}Add{{end}} {{.ModelName}}{{end}}
+
+{{define "breadcrumbs"}}
+<span style="margin: 0 0.5rem;">&rsaquo;</span>
+<a href="/admin/{{.App}}/">{{.App}}</a>
+<span style="margin: 0 0.5rem;">&rsaquo;</span>
+<a href="/admin/{{.App}}/{{.ModelName}}/">{{.ModelName}}</a>
+<span style="margin: 0 0.5rem;">&rsaquo;</span>
+<span>{{if .ObjectID}}Change{{else}}Add{{end}}</span>
+{{end}}
+
+{{define "content"}}
+<div class="title-area" style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>{{if .ObjectID}}Change{{else}}Add{{end}} {{.ModelName}}</h2>
+</div>
+
+{{if .Errors}}
+<div style="background: #fee; border: 1px solid #fcc; border-radius: 0.375rem; padding: 1rem; margin-bottom: 1.5rem;">
+    <strong style="color: #c00;">Please correct the errors below:</strong>
+    <ul style="margin: 0.5rem 0 0 1.5rem;">
+        {{range .Errors}}
+        <li style="color: #c00;">{{.}}</li>
+        {{end}}
+    </ul>
+</div>
+{{end}}
+
+<form method="POST"
+    action="{{if .ObjectID}}/admin/{{.App}}/{{.ModelName}}/{{.ObjectID}}/change/{{else}}/admin/{{.App}}/{{.ModelName}}/add/{{end}}"
+    class="card" style="padding: 2rem;">
+
+    {{range .FieldSets}}
+    <fieldset style="border: none; padding: 0; margin-bottom: 2rem;">
+        {{if .Name}}
+        <legend
+            style="font-size: 1.125rem; font-weight: 600; color: #374151; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border-color);">
+            {{.Name}}
+        </legend>
+        {{end}}
+
+        {{if .Description}}
+        <p style="color: #6b7280; margin-bottom: 1rem; font-size: 0.875rem;">{{.Description}}</p>
+        {{end}}
+
+        {{range .Fields}}
+        <div style="margin-bottom: 1.5rem;">
+            <label for="id_{{.Name}}" style="display: block; font-weight: 500; margin-bottom: 0.5rem; color: #374151;">
+                {{.Label}}{{if .Required}}<span style="color: #ef4444;">*</span>{{end}}
+            </label>
+
+            {{if .HelpText}}
+            <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 0.5rem;">{{.HelpText}}</p>
+            {{end}}
+
+            {{if eq .Widget "text"}}
+            <input type="text" id="id_{{.Name}}" name="{{.Name}}" value="{{.Value}}" {{if
+                .MaxLength}}maxlength="{{.MaxLength}}" {{end}} {{if .Required}}required{{end}} {{if
+                .ReadOnly}}readonly{{end}} class="form-control"
+                style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.375rem; font-size: 0.875rem;" />
+
+            {{else if eq .Widget "email"}}
+            <input type="email" id="id_{{.Name}}" name="{{.Name}}" value="{{.Value}}" {{if .Required}}required{{end}}
+                {{if .ReadOnly}}readonly{{end}}
+                style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.375rem; font-size: 0.875rem;" />
+
+            {{else if eq .Widget "number"}}
+            <input type="number" id="id_{{.Name}}" name="{{.Name}}" value="{{.Value}}" {{if .Step}}step="{{.Step}}"
+                {{end}} {{if .Required}}required{{end}} {{if .ReadOnly}}readonly{{end}}
+                style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.375rem; font-size: 0.875rem;" />
+
+            {{else if eq .Widget "checkbox"}}
+            <div style="display: flex; align-items: center;">
+                <input type="checkbox" id="id_{{.Name}}" name="{{.Name}}" value="true" {{if .Value}}checked{{end}} {{if
+                    .ReadOnly}}disabled{{end}}
+                    style="width: 1.25rem; height: 1.25rem; margin-right: 0.5rem; cursor: pointer;" />
+                <label for="id_{{.Name}}" style="cursor: pointer; margin: 0;">{{.Label}}</label>
+            </div>
+
+            {{else if eq .Widget "textarea"}}
+            <textarea id="id_{{.Name}}" name="{{.Name}}" rows="5" {{if .Required}}required{{end}} {{if
+                .ReadOnly}}readonly{{end}}
+                style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.375rem; font-size: 0.875rem; font-family: inherit;">{{.Value}}</textarea>
+
+            {{else if eq .Widget "date"}}
+            <input type="date" id="id_{{.Name}}" name="{{.Name}}" value="{{.Value}}" {{if .Required}}required{{end}}
+                {{if .ReadOnly}}readonly{{end}}
+                style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.375rem; font-size: 0.875rem;" />
+
+            {{else if eq .Widget "datetime"}}
+            <input type="datetime-local" id="id_{{.Name}}" name="{{.Name}}" value="{{.Value}}" {{if
+                .Required}}required{{end}} {{if .ReadOnly}}readonly{{end}}
+                style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.375rem; font-size: 0.875rem;" />
+
+            {{else if eq .Widget "select"}}
+            <select id="id_{{.Name}}" name="{{.Name}}" {{if .Required}}required{{end}} {{if .ReadOnly}}disabled{{end}}
+                style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.375rem; font-size: 0.875rem;">
+                <option value="">---------</option>
+                {{range .Choices}}
+                <option value="{{.Value}}" {{if eq $.Value .Value}}selected{{end}}>{{.Label}}</option>
+                {{end}}
+            </select>
+
+            {{else}}
+            <!-- Fallback: text input -->
+            <input type="text" id="id_{{.Name}}" name="{{.Name}}" value="{{.Value}}" {{if .Required}}required{{end}}
+                {{if .ReadOnly}}readonly{{end}}
+                style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.375rem; font-size: 0.875rem;" />
+            {{end}}
+
+            {{if .Error}}
+            <p style="color: #ef4444; font-size: 0.875rem; margin-top: 0.25rem;">{{.Error}}</p>
+            {{end}}
+        </div>
+        {{end}}
+    </fieldset>
+    {{end}}
+
+    <div style="display: flex; gap: 1rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+        <button type="submit" name="_save" class="btn btn-primary">
+            Save
+        </button>
+        <button type="submit" name="_continue" class="btn btn-outline">
+            Save and continue editing
+        </button>
+        <button type="submit" name="_addanother" class="btn btn-outline">
+            Save and add another
+        </button>
+        {{if .ObjectID}}
+        <a href="/admin/{{.App}}/{{.ModelName}}/{{.ObjectID}}/delete/" class="btn"
+            style="margin-left: auto; background-color: #ef4444; color: white;">
+            Delete
+        </a>
+        {{end}}
+    </div>
+</form>
+{{end}}

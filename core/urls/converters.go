@@ -19,11 +19,12 @@ type Converter interface {
 
 // Built-in converters
 var converters = map[string]Converter{
-	"int":  IntConverter{},
-	"str":  StringConverter{},
-	"slug": SlugConverter{},
-	"uuid": UUIDConverter{},
-	"path": PathConverter{},
+	"int":    IntConverter{},
+	"str":    StringConverter{},
+	"string": StringConverter{}, // Alias for str
+	"slug":   SlugConverter{},
+	"uuid":   UUIDConverter{},
+	"path":   PathConverter{},
 }
 
 // RegisterConverter adds a new path converter
