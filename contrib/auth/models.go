@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/anuragcarret/djang-drf-go/orm/models"
@@ -13,6 +15,9 @@ type Authenticatable interface {
 	CheckPassword(password string) bool
 	SetPassword(password string)
 	GetID() uint64
+	GetIsActive() bool
+	GetIsStaff() bool
+	GetIsSuperuser() bool
 }
 
 func init() {
@@ -65,6 +70,37 @@ func (u *User) SetPassword(raw string) {
 
 func (u *User) CheckPassword(raw string) bool {
 	return CheckPassword(raw, u.Password)
+}
+
+func (u *User) GetIsActive() bool    { return u.IsActive }
+func (u *User) GetIsStaff() bool     { return u.IsStaff }
+func (u *User) GetIsSuperuser() bool { return u.IsSuperuser }
+func (u *User) GetID() uint64        { return u.ID }
+
+// FindFieldByColumn is a helper to find a struct field by its DB column name
+func FindFieldByColumn(v reflect.Value, col string) (reflect.Value, bool) {
+	t := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		tag := field.Tag.Get("drf")
+		if tag != "" {
+			parts := strings.Split(tag, ";")
+			if parts[0] == col {
+				return v.Field(i), true
+			}
+		}
+		if field.Name == col {
+			return v.Field(i), true
+		}
+
+		// Recurse into embedded structs
+		if field.Anonymous && field.Type.Kind() == reflect.Struct {
+			if sub, ok := FindFieldByColumn(v.Field(i), col); ok {
+				return sub, true
+			}
+		}
+	}
+	return reflect.Value{}, false
 }
 
 // Permission defines an action on a model

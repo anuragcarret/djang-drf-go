@@ -3,6 +3,8 @@ package views
 import (
 	"net/http"
 	"reflect"
+
+	"github.com/anuragcarret/djang-drf-go/contrib/auth"
 )
 
 // View defines the interface for an API view
@@ -81,7 +83,7 @@ func Handler(v interface{}) http.Handler {
 			ResponseWriter: w,
 			Query:          r.URL.Query(),
 			Data:           make(map[string]interface{}),
-			User:           r.Context().Value("user"), // Extract from context (string key for simplicity)
+			User:           r.Context().Value(auth.UserContextKey), // Extract from context using shared key
 		}
 		_ = ctx.ParseRequest()
 

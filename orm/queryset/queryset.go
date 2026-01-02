@@ -5,6 +5,7 @@ import (
 	"log"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/anuragcarret/djang-drf-go/core/apps"
 	"github.com/anuragcarret/djang-drf-go/orm/db"
@@ -509,6 +510,20 @@ func (q *QuerySet[T]) Create(obj T) error {
 	var tableName string
 	if m, ok := interface{}(obj).(ModelInterface); ok {
 		tableName = m.TableName()
+	}
+
+	// Set timestamps
+	now := time.Now()
+	t := val.Type()
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("drf")
+		if hasOption(tag, "auto_now_add") || hasOption(tag, "auto_now") {
+			field := val.Field(i)
+			if field.CanSet() && field.Type().String() == "time.Time" {
+				field.Set(reflect.ValueOf(now))
+			}
+		}
 	}
 
 	fields, values := collectFields(val)

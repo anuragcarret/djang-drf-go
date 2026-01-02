@@ -7,7 +7,6 @@ import (
 	"html/template"
 	"net/http"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/anuragcarret/djang-drf-go/admin/sessions"
@@ -169,7 +168,7 @@ func (v *LoginView) authenticateUser(username, password string) (auth.Authentica
 
 	// Prepare scan destinations
 	for i, col := range cols {
-		fieldVal, ok := findFieldByColumn(val, col)
+		fieldVal, ok := auth.FindFieldByColumn(val, col)
 		if ok && fieldVal.CanAddr() {
 			dest[i] = fieldVal.Addr().Interface()
 		} else {
@@ -188,32 +187,6 @@ func (v *LoginView) authenticateUser(username, password string) (auth.Authentica
 	}
 
 	return user, nil
-}
-
-// findFieldByColumn is a helper to find a struct field by its DB column name
-func findFieldByColumn(v reflect.Value, col string) (reflect.Value, bool) {
-	t := v.Type()
-	for i := 0; i < v.NumField(); i++ {
-		field := t.Field(i)
-		tag := field.Tag.Get("drf")
-		if tag != "" {
-			parts := strings.Split(tag, ";")
-			if parts[0] == col {
-				return v.Field(i), true
-			}
-		}
-		if field.Name == col {
-			return v.Field(i), true
-		}
-
-		// Recurse into embedded structs
-		if field.Anonymous && field.Type.Kind() == reflect.Struct {
-			if sub, ok := findFieldByColumn(v.Field(i), col); ok {
-				return sub, true
-			}
-		}
-	}
-	return reflect.Value{}, false
 }
 
 func (v *LoginView) renderLoginForm(w http.ResponseWriter, r *http.Request, errorMsg, username string) {

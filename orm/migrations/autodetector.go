@@ -124,7 +124,7 @@ func (a *Autodetector) collectFields(t reflect.Type, fields map[string]string) {
 		if tag == "" {
 			tag = f.Tag.Get("json")
 		}
-		if tag == "-" || tag == "" {
+		if tag == "-" || tag == "" || hasOption(tag, "m2m") || hasOption(tag, "relation") {
 			continue
 		}
 

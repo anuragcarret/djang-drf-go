@@ -3,8 +3,10 @@ package views
 import (
 	"fmt"
 	"net/url"
+	"reflect"
 	"strconv"
 
+	"github.com/anuragcarret/djang-drf-go/contrib/auth"
 	"github.com/anuragcarret/djang-drf-go/orm/db"
 	"github.com/anuragcarret/djang-drf-go/orm/queryset"
 )
@@ -38,12 +40,41 @@ func (m *CreateModelMixin[T]) Create(c *Context) Response {
 		return BadRequest(map[string]string{"error": "Failed to bind data: " + err.Error()})
 	}
 
+	// Allow hooks for custom logic before creation (e.g., setting the user)
+	m.PerformCreate(c, instance)
+
 	qs := queryset.NewQuerySet[T](m.DB)
 	if err := qs.Create(instance); err != nil {
 		return BadRequest(map[string]string{"error": "Failed to create: " + err.Error()})
 	}
 
 	return Created(instance)
+}
+
+func (m *CreateModelMixin[T]) PerformCreate(c *Context, instance T) {
+	// Automatically set AuthorID or UserID if present and user is authenticated
+	if c.User != nil {
+		user, ok := c.User.(auth.Authenticatable)
+		if !ok {
+			return
+		}
+
+		v := reflect.ValueOf(instance)
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+
+		// Try to find AuthorID or UserID fields
+		for _, name := range []string{"AuthorID", "UserID"} {
+			field := v.FieldByName(name)
+			if field.IsValid() && field.CanSet() && field.Kind() == reflect.Uint64 {
+				if field.Uint() == 0 { // Only set if not already set
+					field.SetUint(user.GetID())
+					break
+				}
+			}
+		}
+	}
 }
 
 // RetrieveModelMixin provides a `Retrieve` method for retrieving a single object
