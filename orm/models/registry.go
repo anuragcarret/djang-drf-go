@@ -153,7 +153,3 @@ func (f *dummyField) Options() *fields.FieldOptions                       { retu
 func (f *dummyField) ToDatabase(value interface{}) (interface{}, error)   { return value, nil }
 func (f *dummyField) FromDatabase(value interface{}) (interface{}, error) { return value, nil }
 func (f *dummyField) Validate(value interface{}) error                    { return nil }
-
-// Default implementation of TableName and Meta to satisfy interface
-func (m *Model) TableName() string { return "" }
-func (m *Model) Meta() *ModelMeta  { return &ModelMeta{} }

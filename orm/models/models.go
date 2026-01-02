@@ -18,6 +18,14 @@ func (m *Model) GetID() uint64 {
 	return m.ID
 }
 
+func (m *Model) Meta() *ModelMeta {
+	return &ModelMeta{}
+}
+
+func (m *Model) TableName() string {
+	return ""
+}
+
 // ModelInterface defines required methods for any model
 type ModelInterface interface {
 	TableName() string

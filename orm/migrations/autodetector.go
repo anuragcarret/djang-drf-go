@@ -137,12 +137,55 @@ func (a *Autodetector) collectFields(t reflect.Type, fields map[string]string) {
 
 		// Type mapping
 		dbType := "TEXT"
-		if f.Type.Kind() == reflect.Int || f.Type.Kind() == reflect.Uint64 {
-			dbType = "INTEGER"
-		} else if f.Type.String() == "time.Time" || f.Type.String() == "*time.Time" {
-			dbType = "TIMESTAMP WITH TIME ZONE"
-		} else if f.Type.Kind() == reflect.Bool {
+		maxLength := getOptionValue(tag, "max_length")
+		explicitType := getOptionValue(tag, "type")
+
+		switch f.Type.Kind() {
+		case reflect.Bool:
 			dbType = "BOOLEAN"
+		case reflect.Int16, reflect.Uint16:
+			dbType = "SMALLINT"
+		case reflect.Int32, reflect.Uint32, reflect.Int:
+			dbType = "INTEGER"
+		case reflect.Int64, reflect.Uint64:
+			dbType = "BIGINT"
+		case reflect.Float32, reflect.Float64:
+			dbType = "DOUBLE PRECISION"
+		case reflect.String:
+			if maxLength != "" {
+				dbType = fmt.Sprintf("VARCHAR(%s)", maxLength)
+			} else {
+				dbType = "TEXT"
+			}
+		case reflect.Slice:
+			if f.Type.Elem().Kind() == reflect.Uint8 {
+				dbType = "BYTEA"
+			} else {
+				// Simple array support: map element type and append []
+				elemType := "TEXT"
+				switch f.Type.Elem().Kind() {
+				case reflect.Int32, reflect.Int:
+					elemType = "INTEGER"
+				case reflect.Int64:
+					elemType = "BIGINT"
+				case reflect.Float64:
+					elemType = "DOUBLE PRECISION"
+				case reflect.Bool:
+					elemType = "BOOLEAN"
+				}
+				dbType = elemType + "[]"
+			}
+		case reflect.Map, reflect.Struct:
+			if f.Type.String() != "time.Time" && f.Type.String() != "*time.Time" {
+				dbType = "JSONB"
+			} else {
+				dbType = "TIMESTAMP WITH TIME ZONE"
+			}
+		}
+
+		// Explicit type override from tag
+		if explicitType != "" {
+			dbType = strings.ToUpper(explicitType)
 		}
 
 		// Constraints
@@ -178,6 +221,22 @@ func (a *Autodetector) collectFields(t reflect.Type, fields map[string]string) {
 					dbType += " NOT NULL"
 				}
 				if defaultValue != "" {
+					// Quote string defaults if they are not already quoted or numeric/bool
+					isBool := defaultValue == "true" || defaultValue == "false"
+					isNumeric := true
+					if len(defaultValue) == 0 {
+						isNumeric = false
+					} else {
+						for _, r := range defaultValue {
+							if (r < '0' || r > '9') && r != '.' && r != '-' {
+								isNumeric = false
+								break
+							}
+						}
+					}
+					if !isBool && !isNumeric && !strings.HasPrefix(defaultValue, "'") {
+						defaultValue = "'" + defaultValue + "'"
+					}
 					dbType += " DEFAULT " + defaultValue
 				}
 			}

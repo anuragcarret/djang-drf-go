@@ -3,6 +3,7 @@ package migrations
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/anuragcarret/djang-drf-go/orm/db"
 )
@@ -50,7 +51,7 @@ func TestCollectFields(t *testing.T) {
 			model: &TestModel{},
 			expected: map[string]string{
 				"id":       "SERIAL PRIMARY KEY",
-				"username": "TEXT UNIQUE NOT NULL",
+				"username": "VARCHAR(150) UNIQUE NOT NULL",
 				"email":    "TEXT UNIQUE",
 				"bio":      "TEXT",
 				"age":      "INTEGER NOT NULL DEFAULT 18",
@@ -181,6 +182,59 @@ func TestM2MThroughTableDetection(t *testing.T) {
 	}
 	if _, ok := ct.Fields["from_id"]; !ok {
 		t.Errorf("Expected field from_id in through table")
+	}
+}
+
+func TestComprehensiveTypes(t *testing.T) {
+	detector := &Autodetector{}
+
+	type AllTypesModel struct {
+		BoolField     bool                   `drf:"bool_field"`
+		SmallIntField int16                  `drf:"smallint_field"`
+		IntField      int32                  `drf:"int_field"`
+		BigIntField   int64                  `drf:"bigint_field"`
+		NumericField  float64                `drf:"numeric_field;type=numeric"`
+		DoubleField   float64                `drf:"double_field"`
+		VarcharField  string                 `drf:"varchar_field;max_length=255"`
+		TextField     string                 `drf:"text_field"`
+		DateField     time.Time              `drf:"date_field;type=date"`
+		TimeField     time.Time              `drf:"time_field;type=time"`
+		IntervalField string                 `drf:"interval_field;type=interval"`
+		UUIDField     string                 `drf:"uuid_field;type=uuid"`
+		ByteaField    []byte                 `drf:"bytea_field"`
+		JSONBField    map[string]interface{} `drf:"jsonb_field"`
+		ArrayField    []int32                `drf:"array_field"`
+		TsVectorField string                 `drf:"ts_vector_field;type=tsvector"`
+	}
+
+	expected := map[string]string{
+		"bool_field":      "BOOLEAN NOT NULL",
+		"smallint_field":  "SMALLINT NOT NULL",
+		"int_field":       "INTEGER NOT NULL",
+		"bigint_field":    "BIGINT NOT NULL",
+		"numeric_field":   "NUMERIC NOT NULL",
+		"double_field":    "DOUBLE PRECISION NOT NULL",
+		"varchar_field":   "VARCHAR(255) NOT NULL",
+		"text_field":      "TEXT NOT NULL",
+		"date_field":      "DATE NOT NULL",
+		"time_field":      "TIME NOT NULL",
+		"interval_field":  "INTERVAL NOT NULL",
+		"uuid_field":      "UUID NOT NULL",
+		"bytea_field":     "BYTEA NOT NULL",
+		"jsonb_field":     "JSONB NOT NULL",
+		"array_field":     "INTEGER[] NOT NULL",
+		"ts_vector_field": "TSVECTOR NOT NULL",
+	}
+
+	fields := make(map[string]string)
+	detector.collectFields(reflect.TypeOf(AllTypesModel{}), fields)
+
+	for name, want := range expected {
+		if got, ok := fields[name]; !ok {
+			t.Errorf("Field %s missing", name)
+		} else if got != want {
+			t.Errorf("Field %s: got %q, want %q", name, got, want)
+		}
 	}
 }
 

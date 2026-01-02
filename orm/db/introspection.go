@@ -1,6 +1,9 @@
 package db
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // TableInfo represents metadata about a table
 type TableInfo struct {
@@ -10,13 +13,15 @@ type TableInfo struct {
 
 // GetTableSchema returns the current schema of a table from the database
 func (db *DB) GetTableSchema(tableName string) (*TableInfo, error) {
-	// Query to get columns, types, nullability and unique constraints
+	// Query to get columns, types, nullability, unique constraints, and max length
 	query := `
 		SELECT 
 			c.column_name, 
 			c.data_type, 
 			c.is_nullable,
 			c.column_default,
+			c.character_maximum_length,
+			c.udt_name,
 			EXISTS (
 				SELECT 1 
 				FROM information_schema.table_constraints tc 
@@ -38,19 +43,61 @@ func (db *DB) GetTableSchema(tableName string) (*TableInfo, error) {
 	for rows.Next() {
 		var name, dtype, nullable string
 		var isUnique bool
-		var colDefault *string
-		if err := rows.Scan(&name, &dtype, &nullable, &colDefault, &isUnique); err != nil {
+		var colDefault, maxLen, udtName *string
+		if err := rows.Scan(&name, &dtype, &nullable, &colDefault, &maxLen, &udtName, &isUnique); err != nil {
 			return nil, err
 		}
 
 		// Normalize type to match our collectFields output for comparison
-		normType := "TEXT"
-		if dtype == "integer" || dtype == "bigint" {
+		normType := strings.ToUpper(dtype)
+
+		// Postgres specific normalizations
+		switch dtype {
+		case "integer":
 			normType = "INTEGER"
-		} else if dtype == "timestamp with time zone" {
-			normType = "TIMESTAMP WITH TIME ZONE"
-		} else if dtype == "boolean" {
+		case "bigint":
+			normType = "BIGINT"
+		case "smallint":
+			normType = "SMALLINT"
+		case "boolean":
 			normType = "BOOLEAN"
+		case "text":
+			normType = "TEXT"
+		case "character varying":
+			if maxLen != nil {
+				normType = fmt.Sprintf("VARCHAR(%s)", *maxLen)
+			} else {
+				normType = "VARCHAR"
+			}
+		case "double precision":
+			normType = "DOUBLE PRECISION"
+		case "timestamp with time zone":
+			normType = "TIMESTAMP WITH TIME ZONE"
+		case "ARRAY":
+			if udtName != nil {
+				switch *udtName {
+				case "_int4":
+					normType = "INTEGER[]"
+				case "_int8":
+					normType = "BIGINT[]"
+				case "_text":
+					normType = "TEXT[]"
+				case "_float8":
+					normType = "DOUBLE PRECISION[]"
+				case "_bool":
+					normType = "BOOLEAN[]"
+				default:
+					normType = strings.TrimPrefix(*udtName, "_") + "[]"
+				}
+			}
+		default:
+			// Fallback to udtName for types non-standard in information_schema.columns
+			if udtName != nil {
+				u := strings.ToUpper(*udtName)
+				if u == "JSONB" || u == "UUID" || u == "INET" || u == "TSVECTOR" || u == "INTERVAL" || u == "DATE" || u == "TIME" || u == "NUMERIC" || u == "BYTEA" || u == "HSTORE" {
+					normType = u
+				}
+			}
 		}
 
 		if isUnique {
