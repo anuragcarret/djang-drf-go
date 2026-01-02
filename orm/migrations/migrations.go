@@ -1,6 +1,9 @@
 package migrations
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/anuragcarret/djang-drf-go/orm/db"
 )
 
@@ -46,6 +49,72 @@ func (o *AddField) Apply(database *db.DB) error {
 
 func (o *AddField) Describe() string {
 	return "Add field " + o.FieldName + " to " + o.TableName
+}
+
+// AlterField operation
+type AlterField struct {
+	TableName string
+	FieldName string
+	FieldType string
+}
+
+func (o *AlterField) Apply(database *db.DB) error {
+	// Parse FieldType: e.g. "TEXT UNIQUE NOT NULL"
+	parts := strings.Split(o.FieldType, " ")
+	baseType := parts[0]
+	isUnique := false
+	isNotNull := false
+
+	for _, p := range parts {
+		if p == "UNIQUE" {
+			isUnique = true
+		}
+		if p == "NOT" { // NOT NULL
+			isNotNull = true
+		}
+	}
+	if strings.Contains(o.FieldType, "TIMESTAMP WITH TIME ZONE") {
+		baseType = "TIMESTAMP WITH TIME ZONE"
+	}
+
+	var query string
+
+	// 1. Alter Type
+	if !strings.Contains(o.FieldType, "SERIAL") && !strings.Contains(o.FieldType, "PRIMARY KEY") {
+		query = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s::%s", o.TableName, o.FieldName, baseType, o.FieldName, baseType)
+		if _, err := database.Exec(query); err != nil {
+			return err
+		}
+	}
+
+	// 2. Alter Not Null
+	if !strings.Contains(o.FieldType, "PRIMARY KEY") {
+		if isNotNull {
+			query = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", o.TableName, o.FieldName)
+		} else {
+			query = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL", o.TableName, o.FieldName)
+		}
+		if _, err := database.Exec(query); err != nil {
+			return err
+		}
+	}
+
+	// 3. Alter Unique (Simplification: always try to add if requested, might fail if exists)
+	if isUnique {
+		// Postgres requires adding a constraint for UNIQUE
+		constraintName := fmt.Sprintf("uni_%s_%s", o.TableName, o.FieldName)
+		database.Exec(fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s", o.TableName, constraintName))
+		query = fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s UNIQUE (%s)", o.TableName, constraintName, o.FieldName)
+		if _, err := database.Exec(query); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (o *AlterField) Describe() string {
+	return "Alter field " + o.FieldName + " on " + o.TableName
 }
 
 // RunSQL operation

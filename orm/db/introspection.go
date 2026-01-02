@@ -8,10 +8,22 @@ type TableInfo struct {
 
 // GetTableSchema returns the current schema of a table from the database
 func (db *DB) GetTableSchema(tableName string) (*TableInfo, error) {
+	// Query to get columns, types, nullability and unique constraints
 	query := `
-		SELECT column_name, data_type, character_maximum_length, is_nullable
-		FROM information_schema.columns
-		WHERE table_name = $1
+		SELECT 
+			c.column_name, 
+			c.data_type, 
+			c.is_nullable,
+			EXISTS (
+				SELECT 1 
+				FROM information_schema.table_constraints tc 
+				JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name 
+				WHERE tc.table_name = c.table_name 
+				  AND kcu.column_name = c.column_name 
+				  AND (tc.constraint_type = 'UNIQUE' OR tc.constraint_type = 'PRIMARY KEY')
+			) as is_unique
+		FROM information_schema.columns c
+		WHERE c.table_name = $1
 	`
 	rows, err := db.conn.Query(query, tableName)
 	if err != nil {
@@ -22,13 +34,29 @@ func (db *DB) GetTableSchema(tableName string) (*TableInfo, error) {
 	cols := make(map[string]string)
 	for rows.Next() {
 		var name, dtype, nullable string
-		var maxLen interface{}
-		if err := rows.Scan(&name, &dtype, &maxLen, &nullable); err != nil {
+		var isUnique bool
+		if err := rows.Scan(&name, &dtype, &nullable, &isUnique); err != nil {
 			return nil, err
 		}
 
-		// Simplify types for comparison
-		cols[name] = dtype
+		// Normalize type to match our collectFields output for comparison
+		normType := "TEXT"
+		if dtype == "integer" || dtype == "bigint" {
+			normType = "INTEGER"
+		} else if dtype == "timestamp with time zone" {
+			normType = "TIMESTAMP WITH TIME ZONE"
+		} else if dtype == "boolean" {
+			normType = "BOOLEAN"
+		}
+
+		if isUnique { // Simplification: we treat PK as UNIQUE too for this comparison
+			normType += " UNIQUE"
+		}
+		if nullable == "NO" {
+			normType += " NOT NULL"
+		}
+
+		cols[name] = normType
 	}
 
 	if len(cols) == 0 {

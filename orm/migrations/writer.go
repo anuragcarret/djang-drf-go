@@ -33,6 +33,16 @@ func init() {
 				FieldName: "{{.FieldName}}",
 				FieldType: "{{.FieldType}}",
 			},
+			{{else if eq .Type "AlterField"}}
+			&migrations.AlterField{
+				TableName: "{{.TableName}}",
+				FieldName: "{{.FieldName}}",
+				FieldType: "{{.FieldType}}",
+			},
+			{{else if eq .Type "RunSQL"}}
+			&migrations.RunSQL{
+				SQL: "{{.SQL}}",
+			},
 			{{end}}
 			{{end}}
 		},
@@ -65,6 +75,7 @@ func (w *Writer) Write(ops []Operation) (string, error) {
 		TableName string
 		FieldName string
 		FieldType string
+		SQL       string
 	}
 
 	data := struct {
@@ -90,6 +101,18 @@ func (w *Writer) Write(ops []Operation) (string, error) {
 				TableName: o.TableName,
 				FieldName: o.FieldName,
 				FieldType: o.FieldType,
+			})
+		case *AlterField:
+			data.Operations = append(data.Operations, opData{
+				Type:      "AlterField",
+				TableName: o.TableName,
+				FieldName: o.FieldName,
+				FieldType: o.FieldType,
+			})
+		case *RunSQL:
+			data.Operations = append(data.Operations, opData{
+				Type: "RunSQL",
+				SQL:  o.SQL,
 			})
 		}
 	}
