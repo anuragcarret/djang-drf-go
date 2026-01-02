@@ -1,5 +1,7 @@
 package db
 
+import "strings"
+
 // TableInfo represents metadata about a table
 type TableInfo struct {
 	Name    string
@@ -14,6 +16,7 @@ func (db *DB) GetTableSchema(tableName string) (*TableInfo, error) {
 			c.column_name, 
 			c.data_type, 
 			c.is_nullable,
+			c.column_default,
 			EXISTS (
 				SELECT 1 
 				FROM information_schema.table_constraints tc 
@@ -35,7 +38,8 @@ func (db *DB) GetTableSchema(tableName string) (*TableInfo, error) {
 	for rows.Next() {
 		var name, dtype, nullable string
 		var isUnique bool
-		if err := rows.Scan(&name, &dtype, &nullable, &isUnique); err != nil {
+		var colDefault *string
+		if err := rows.Scan(&name, &dtype, &nullable, &colDefault, &isUnique); err != nil {
 			return nil, err
 		}
 
@@ -49,11 +53,22 @@ func (db *DB) GetTableSchema(tableName string) (*TableInfo, error) {
 			normType = "BOOLEAN"
 		}
 
-		if isUnique { // Simplification: we treat PK as UNIQUE too for this comparison
+		if isUnique {
 			normType += " UNIQUE"
 		}
 		if nullable == "NO" {
 			normType += " NOT NULL"
+		}
+		if colDefault != nil {
+			// Clean up default: e.g. "'active'::text" -> "active", or "true" -> "true"
+			d := *colDefault
+			d = strings.Split(d, "::")[0]
+			d = strings.Trim(d, "'")
+
+			// Only append if it's not a sequence (like nextval)
+			if !strings.Contains(d, "nextval") {
+				normType += " DEFAULT " + d
+			}
 		}
 
 		cols[name] = normType

@@ -117,6 +117,22 @@ func (o *AlterField) Describe() string {
 	return "Alter field " + o.FieldName + " on " + o.TableName
 }
 
+// RemoveField operation
+type RemoveField struct {
+	TableName string
+	FieldName string
+}
+
+func (o *RemoveField) Apply(database *db.DB) error {
+	query := fmt.Sprintf("ALTER TABLE %s DROP COLUMN IF EXISTS %s CASCADE", o.TableName, o.FieldName)
+	_, err := database.Exec(query)
+	return err
+}
+
+func (o *RemoveField) Describe() string {
+	return "Remove field " + o.FieldName + " from " + o.TableName
+}
+
 // RunSQL operation
 type RunSQL struct {
 	SQL string

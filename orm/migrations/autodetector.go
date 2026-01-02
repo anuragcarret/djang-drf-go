@@ -218,7 +218,6 @@ func getOptionValue(tag, option string) string {
 }
 
 func (a *Autodetector) detectColumnChanges(tableName string, model interface{}) ([]Operation, error) {
-	var ops []Operation
 	schema, err := a.db.GetTableSchema(tableName)
 	if err != nil {
 		return nil, err
@@ -226,6 +225,11 @@ func (a *Autodetector) detectColumnChanges(tableName string, model interface{}) 
 	if schema == nil {
 		return nil, nil // Should not happen if caller checked
 	}
+	return a.detectColumnChangesInternal(tableName, model, schema)
+}
+
+func (a *Autodetector) detectColumnChangesInternal(tableName string, model interface{}, schema *db.TableInfo) ([]Operation, error) {
+	var ops []Operation
 
 	modelFields := make(map[string]string)
 	v := reflect.ValueOf(model)
@@ -242,7 +246,7 @@ func (a *Autodetector) detectColumnChanges(tableName string, model interface{}) 
 				FieldName: colName,
 				FieldType: colType,
 			})
-		} else if dbType != colType {
+		} else if !a.isFieldEqual(colType, dbType) {
 			// Type or constraints changed - AlterField
 			ops = append(ops, &AlterField{
 				TableName: tableName,
@@ -252,7 +256,38 @@ func (a *Autodetector) detectColumnChanges(tableName string, model interface{}) 
 		}
 	}
 
+	// Check for removed fields: in schema but not in model
+	for dbColName := range schema.Columns {
+		if _, ok := modelFields[dbColName]; !ok {
+			// Column in DB but not in model - RemoveField
+			ops = append(ops, &RemoveField{
+				TableName: tableName,
+				FieldName: dbColName,
+			})
+		}
+	}
+
 	return ops, nil
+}
+
+func (a *Autodetector) isFieldEqual(modelType, dbType string) bool {
+	if modelType == dbType {
+		return true
+	}
+
+	// Semantic normalization
+	// 1. SERIAL PRIMARY KEY -> INTEGER UNIQUE NOT NULL
+	mNorm := normalizeType(modelType)
+	dNorm := normalizeType(dbType)
+
+	return mNorm == dNorm
+}
+
+func normalizeType(t string) string {
+	res := t
+	res = strings.ReplaceAll(res, "SERIAL PRIMARY KEY", "INTEGER UNIQUE NOT NULL")
+	// Add more normalizations if needed
+	return res
 }
 
 func toSnakeCase(s string) string {

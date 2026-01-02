@@ -3,6 +3,8 @@ package migrations
 import (
 	"reflect"
 	"testing"
+
+	"github.com/anuragcarret/djang-drf-go/orm/db"
 )
 
 type TestModel struct {
@@ -100,6 +102,57 @@ type M2MModel struct {
 
 func (m *M2MModel) TableName() string { return "m2m_model" }
 
+func TestFieldSemanticEquality(t *testing.T) {
+	detector := &Autodetector{}
+
+	tests := []struct {
+		name      string
+		modelType string
+		dbType    string
+		expected  bool
+	}{
+		{
+			name:      "Exact match",
+			modelType: "TEXT UNIQUE NOT NULL",
+			dbType:    "TEXT UNIQUE NOT NULL",
+			expected:  true,
+		},
+		{
+			name:      "Primary Key vs Introspection",
+			modelType: "SERIAL PRIMARY KEY",
+			dbType:    "INTEGER UNIQUE NOT NULL",
+			expected:  true,
+		},
+		{
+			name:      "Nullable mismatch",
+			modelType: "TEXT UNIQUE",
+			dbType:    "TEXT UNIQUE NOT NULL",
+			expected:  false,
+		},
+		{
+			name:      "Default value match",
+			modelType: "BOOLEAN NOT NULL DEFAULT true",
+			dbType:    "BOOLEAN NOT NULL DEFAULT true",
+			expected:  true,
+		},
+		{
+			name:      "Default value mismatch",
+			modelType: "INTEGER NOT NULL DEFAULT 18",
+			dbType:    "INTEGER NOT NULL DEFAULT 20",
+			expected:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detector.isFieldEqual(tt.modelType, tt.dbType)
+			if got != tt.expected {
+				t.Errorf("%s: isFieldEqual(%q, %q) = %v, expected %v", tt.name, tt.modelType, tt.dbType, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestM2MThroughTableDetection(t *testing.T) {
 	// Mock DB that returns no tables
 	// Since we can't easily mock db.DB without an interface,
@@ -128,5 +181,42 @@ func TestM2MThroughTableDetection(t *testing.T) {
 	}
 	if _, ok := ct.Fields["from_id"]; !ok {
 		t.Errorf("Expected field from_id in through table")
+	}
+}
+
+func TestDetectRemovedField(t *testing.T) {
+	detector := &Autodetector{}
+
+	type ModelWithLessFields struct {
+		ID uint64 `drf:"id;primary_key"`
+	}
+
+	schema := &db.TableInfo{
+		Name: "test_table",
+		Columns: map[string]string{
+			"id":        "INTEGER UNIQUE NOT NULL",
+			"old_field": "TEXT",
+		},
+	}
+
+	// detectColumnChangesUses uses collector.collectFields
+	// We check if "old_field" is detected for removal
+	ops, err := detector.detectColumnChangesInternal("test_table", &ModelWithLessFields{}, schema)
+	if err != nil {
+		t.Fatalf("detectColumnChangesInternal failed: %v", err)
+	}
+
+	found := false
+	for _, op := range ops {
+		if rop, ok := op.(*RemoveField); ok {
+			if rop.FieldName == "old_field" {
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		t.Errorf("Expected RemoveField operation for 'old_field', but not found in %v", ops)
 	}
 }

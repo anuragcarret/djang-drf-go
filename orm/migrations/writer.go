@@ -39,6 +39,11 @@ func init() {
 				FieldName: "{{.FieldName}}",
 				FieldType: "{{.FieldType}}",
 			},
+			{{else if eq .Type "RemoveField"}}
+			&migrations.RemoveField{
+				TableName: "{{.TableName}}",
+				FieldName: "{{.FieldName}}",
+			},
 			{{else if eq .Type "RunSQL"}}
 			&migrations.RunSQL{
 				SQL: "{{.SQL}}",
@@ -108,6 +113,12 @@ func (w *Writer) Write(ops []Operation) (string, error) {
 				TableName: o.TableName,
 				FieldName: o.FieldName,
 				FieldType: o.FieldType,
+			})
+		case *RemoveField:
+			data.Operations = append(data.Operations, opData{
+				Type:      "RemoveField",
+				TableName: o.TableName,
+				FieldName: o.FieldName,
 			})
 		case *RunSQL:
 			data.Operations = append(data.Operations, opData{
